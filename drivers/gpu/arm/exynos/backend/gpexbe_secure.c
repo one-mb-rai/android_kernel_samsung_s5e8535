@@ -24,6 +24,7 @@
 /* Uses */
 #include <mali_kbase.h>
 #include <linux/protected_mode_switcher.h>
+#include <mali_kbase_hwaccess_pm.h>
 
 #include <gpex_utils.h>
 #include <gpexbe_smc_hvc.h>
