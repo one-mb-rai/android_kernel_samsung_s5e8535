@@ -132,6 +132,7 @@
 #define S10B_2B_STRIDE(w)		(__ALIGN_UP(((w + 3)/ 4), 16))
 
 /* SBWC */
+#ifndef SBWC_STRIDE
 /* w: width, h: height, b: block size, a: alignment, s: stride, e: extra */
 #define SBWC_STRIDE(w, b, a)		__ALIGN_UP(((b) * (((w) + 31) / 32)), a)
 #define SBWC_HEADER_STRIDE(w)		((((((w) + 63) / 64) + 15) / 16) * 16)
@@ -203,4 +204,5 @@
 
 #define SBWCL_32_CBCR_BASE(base, w, h)	((base) + SBWCL_32_Y_SIZE(w, h) + SBWCL_Y_HEADER_SIZE(w, h))
 #define SBWCL_64_CBCR_BASE(base, w, h)	((base) + SBWCL_64_Y_SIZE(w, h) + SBWCL_Y_HEADER_SIZE(w, h))
+#endif /* !SBWC_STRIDE */
 #endif /* __LINUX_VIDEODEV2_EXYNOS_MEDIA_H */

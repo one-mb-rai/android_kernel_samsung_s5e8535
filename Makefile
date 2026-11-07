@@ -497,6 +497,9 @@ INSTALLKERNEL  := installkernel
 DEPMOD		= depmod
 PERL		= perl
 PYTHON3		= python3
+TARGET_SOC ?= s5e8535
+export TARGET_SOC
+
 CHECK		= sparse
 BASH		= bash
 KGZIP		= gzip
@@ -836,6 +839,9 @@ KBUILD_CFLAGS += -Wno-gnu
 # source of a reference will be _MergedGlobals and not on of the whitelisted names.
 # See modpost pattern 2
 KBUILD_CFLAGS += -mno-global-merge
+KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-var-unsafe)
+KBUILD_CFLAGS += $(call cc-disable-warning, uninitialized-const-pointer)
+KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-field-unsafe)
 else
 
 # Warn about unmarked fall-throughs in switch statement.

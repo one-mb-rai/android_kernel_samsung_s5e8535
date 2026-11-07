@@ -641,9 +641,7 @@ static int __init xbc_parse_kv(char **k, char *v, int op)
 
 	child = xbc_node_get_child(last_parent);
 	if (child && xbc_node_is_value(child)) {
-		if (op == '=')
-			return xbc_parse_error("Value is redefined", v);
-		if (op == ':') {
+		if (op == '=' || op == ':') {
 			unsigned short nidx = child->next;
 
 			xbc_init_node(child, v, XBC_VALUE);
