@@ -52,6 +52,7 @@ static struct device_attribute sec_battery_attrs[] = {
 	SEC_BATTERY_ATTR(blkt_temp_adc),
 	SEC_BATTERY_ATTR(batt_vf_adc),
 	SEC_BATTERY_ATTR(batt_slate_mode),
+	SEC_BATTERY_ATTR(battery_charging_enabled),
 
 	SEC_BATTERY_ATTR(batt_lp_charging),
 	SEC_BATTERY_ATTR(siop_activated),
@@ -526,6 +527,10 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 	case BATT_SLATE_MODE:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
 			is_slate_mode(battery));
+		break;
+	case BATTERY_CHARGING_ENABLED:
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
+			is_slate_mode(battery) ? 0 : 1);
 		break;
 
 	case BATT_LP_CHARGING:
@@ -2312,6 +2317,26 @@ ssize_t sec_bat_store_attrs(
 				dev_info(battery->dev,
 					"%s: SLATE MODE unknown command\n", __func__);
 				return -EINVAL;
+			}
+			__pm_stay_awake(battery->cable_ws);
+			queue_delayed_work(battery->monitor_wqueue,
+					   &battery->cable_work, 0);
+			ret = count;
+		}
+		break;
+	case BATTERY_CHARGING_ENABLED:
+		if (sscanf(buf, "%10d\n", &x) == 1) {
+			if (x == 0) {
+				sec_bat_set_current_event(battery, SEC_BAT_CURRENT_EVENT_SLATE, SEC_BAT_CURRENT_EVENT_SLATE);
+				sec_vote(battery->chgen_vote, VOTER_SLATE, true, SEC_BAT_CHG_MODE_BUCK_OFF);
+				dev_info(battery->dev, "%s: charging disabled (buck-off)\n", __func__);
+			} else {
+				sec_bat_set_current_event(battery, 0, SEC_BAT_CURRENT_EVENT_SLATE);
+				sec_vote(battery->chgen_vote, VOTER_SLATE, false, 0);
+				sec_vote(battery->chgen_vote, VOTER_SMART_SLATE, false, 0);
+				sec_bat_set_mfc_on(battery, WPC_EN_SLATE);
+				sec_bat_smart_sw_src(battery, false, 500);
+				dev_info(battery->dev, "%s: charging enabled\n", __func__);
 			}
 			__pm_stay_awake(battery->cable_ws);
 			queue_delayed_work(battery->monitor_wqueue,

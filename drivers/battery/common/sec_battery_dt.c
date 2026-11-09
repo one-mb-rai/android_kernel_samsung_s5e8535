@@ -742,8 +742,8 @@ int sec_bat_parse_dt(struct device *dev,
 	ret = of_property_read_u32(np, "battery,store_mode_charging_max",
 		&pdata->store_mode_charging_max);
 	if (ret) {
-		pr_info("%s :factory_chg_limit_max is Empty\n", __func__);
-		pdata->store_mode_charging_max = 70;
+		pr_info("%s :store_mode_charging_max is Empty\n", __func__);
+		pdata->store_mode_charging_max = 80;
 	}
 
 	ret = of_property_read_u32(np, "battery,store_mode_charging_min",
