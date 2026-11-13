@@ -126,7 +126,6 @@ static u32 magic_inform, panic_inform;
 static u32 shutdown_offset, shutdown_trigger;
 
 static int sec_reboot_on_panic;
-static char panic_str[10] = "recovery";
 
 ATOMIC_NOTIFIER_HEAD(sec_power_off_notifier_list);
 EXPORT_SYMBOL(sec_power_off_notifier_list);
