@@ -28,7 +28,6 @@
 #include <soc/samsung/cal-if.h>
 #include <soc/samsung/ect_parser.h>
 #include <soc/samsung/freq-qos-tracer.h>
-#include <soc/samsung/exynos-dm.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/acme.h>
@@ -78,55 +77,6 @@ static unsigned int resolve_freq(struct cpufreq_policy *policy,
 /******************************************************************************
  *                            FREQUENCY SCALING                               *
  ******************************************************************************/
-static unsigned int get_freq(struct exynos_cpufreq_domain *domain)
-{
-	unsigned int freq;
-
-	/* valid_freq_flag indicates whether boot freq is in the freq table or not.
-	 * so, to prevent cpufreq mulfuntion, return old freq instead of cal freq
-	 * until the frequency changes even once.
-	 */
-	if (unlikely(!domain->valid_freq_flag && domain->old))
-		return domain->old;
-
-	freq = (unsigned int)cal_dfs_get_rate(domain->cal_id);
-	if (!freq) {
-		/* On changing state, CAL returns 0 */
-		freq = domain->old;
-	}
-
-	return freq;
-}
-
-/*
-static int set_freq(struct exynos_cpufreq_domain *domain,
-					unsigned int target_freq)
-{
-	int err;
-
-	dbg_snapshot_printk("ID %d: %d -> %d (%d)\n",
-		domain->id, domain->old, target_freq, DSS_FLAG_IN);
-
-	if (domain->fast_switch_possible && domain->dvfs_mode == NON_BLOCKING) {
-		err = cal_dfs_set_rate_fast(domain->cal_id, target_freq);
-	}
-	else
-		err = cal_dfs_set_rate(domain->cal_id, target_freq);
-
-	if (err < 0)
-		pr_err("failed to scale frequency of domain%d (%d -> %d)\n",
-			domain->id, domain->old, target_freq);
-
-	if (!domain->fast_switch_possible || domain->dvfs_mode == BLOCKING)
-		trace_acme_scale_freq(domain->id, domain->old, target_freq, "end", 0);
-
-	dbg_snapshot_printk("ID %d: %d -> %d (%d)\n",
-		domain->id, domain->old, target_freq, DSS_FLAG_OUT);
-
-	return err;
-}
-*/
-
 static void debug_pre_scale(struct exynos_cpufreq_domain *domain,
 				unsigned int target_freq)
 {
@@ -169,7 +119,14 @@ static int scale_slowpath(struct exynos_cpufreq_domain *domain,
 	cpufreq_freq_transition_begin(policy, &freqs);
 	debug_pre_scale(domain, target_freq);
 
-	ret = cal_dfs_set_rate(domain->cal_id, target_freq);
+	{
+		unsigned int actual_freq = target_freq;
+		if (domain->id == 1 && target_freq >= 2400000)
+			actual_freq = 2496000;
+		else if (domain->id == 0 && target_freq >= 2002000)
+			actual_freq = 2210000;
+		ret = cal_dfs_set_rate(domain->cal_id, actual_freq);
+	}
 
 	debug_post_scale(domain, target_freq, ret);
 	cpufreq_freq_transition_end(policy, &freqs, ret);
@@ -206,7 +163,14 @@ static int scale_fastpath(struct exynos_cpufreq_domain *domain,
 
 	debug_pre_scale(domain, target_freq);
 
-	ret = cal_dfs_set_rate_fast(domain->cal_id, target_freq);
+	{
+		unsigned int actual_freq = target_freq;
+		if (domain->id == 1 && target_freq >= 2400000)
+			actual_freq = 2496000;
+		else if (domain->id == 0 && target_freq >= 2002000)
+			actual_freq = 2210000;
+		ret = cal_dfs_set_rate_fast(domain->cal_id, actual_freq);
+	}
 
 	/*
 	 * In fastpath, frequench change done event is delivered by
@@ -961,33 +925,6 @@ init_fail:
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_SEC_BOOTSTAT)
-void sec_bootstat_get_cpuinfo(int *freq, int *online)
-{
-	int cpu;
-	int cluster;
-	struct exynos_cpufreq_domain *domain;
-
-	get_online_cpus();
-	*online = cpumask_bits(cpu_online_mask)[0];
-	for_each_online_cpu(cpu) {
-		domain = find_domain(cpu);
-		if (!domain)
-			continue;
-		pr_err("%s, dm type = %d\n", __func__, domain->dm_type);
-		cluster = 0;
-		if (domain->dm_type == DM_CPU_CL1)
-			cluster = 1;
-		else if (domain->dm_type == DM_CPU_CL2)
-			cluster = 2;
-
-		freq[cluster] = get_freq(domain);
-	}
-	put_online_cpus();
-}
-EXPORT_SYMBOL(sec_bootstat_get_cpuinfo);
-#endif
-
 /******************************************************************************
  *                             CPU HOTPLUG CALLBACK                           *
  ******************************************************************************/
@@ -1083,7 +1020,7 @@ static struct notifier_block exynos_cpufreq_fast_switch_nb = {
 #endif
 
 static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
-				       unsigned long pm_event, void *v)
+		unsigned long pm_event, void *v)
 {
 	struct exynos_cpufreq_domain *domain;
 	struct cpufreq_policy *policy;
@@ -1093,9 +1030,13 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 	case PM_SUSPEND_PREPARE:
 		list_for_each_entry_reverse(domain, &domains, list) {
 			cpumask_and(&active_cpus, cpu_active_mask, &domain->cpus);
+			if (cpumask_empty(&active_cpus))
+				continue;
+
 			policy = cpufreq_cpu_get(cpumask_any(&active_cpus));
 			if (!policy)
 				continue;
+
 			if (__exynos_cpufreq_suspend(policy, domain)) {
 				cpufreq_cpu_put(policy);
 				return NOTIFY_BAD;
@@ -1106,9 +1047,13 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 	case PM_POST_SUSPEND:
 		list_for_each_entry(domain, &domains, list) {
 			cpumask_and(&active_cpus, cpu_active_mask, &domain->cpus);
+			if (cpumask_empty(&active_cpus))
+				continue;
+
 			policy = cpufreq_cpu_get(cpumask_any(&active_cpus));
 			if (!policy)
 				continue;
+
 			if (__exynos_cpufreq_resume(policy, domain)) {
 				cpufreq_cpu_put(policy);
 				return NOTIFY_BAD;
@@ -1443,6 +1388,20 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 		pr_err("%s: freq-table does not exist\n", __func__);
 		return -ENODATA;
 	}
+
+	/* NightKernel Overclock: unclamp max_freq and append OC frequencies */
+	if (domain->id == 1) {
+		domain->max_freq = max((unsigned long)2496000, domain->max_freq);
+		if (raw_table_size < 95)
+			freq_table[raw_table_size++] = 2496000;
+	} else if (domain->id == 0) {
+		domain->max_freq = max((unsigned long)2210000, domain->max_freq);
+		if (raw_table_size < 95) {
+			freq_table[raw_table_size++] = 2106000;
+			freq_table[raw_table_size++] = 2210000;
+		}
+	}
+
 
 	/*
 	 * Min/max freq must exist in freq table. If it does not exist,

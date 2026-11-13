@@ -27,7 +27,6 @@
 #include <linux/sti/abc_common.h>
 #endif
 
-extern void hard_reset_delay(void);
 #if defined(CONFIG_BATTERY_SAMSUNG_REBOOT)
 #include <linux/battery/sec_battery_common.h>
 #endif
@@ -127,7 +126,7 @@ static u32 magic_inform, panic_inform;
 static u32 shutdown_offset, shutdown_trigger;
 
 static int sec_reboot_on_panic;
-static char panic_str[10] = "panic";
+static char panic_str[10] = "recovery";
 
 ATOMIC_NOTIFIER_HEAD(sec_power_off_notifier_list);
 EXPORT_SYMBOL(sec_power_off_notifier_list);
@@ -325,10 +324,10 @@ static int sec_reboot(struct notifier_block *this,
 {
 	local_irq_disable();
 
-	hard_reset_delay();
-
-	if (sec_reboot_on_panic && !cmd)
-		cmd = panic_str;
+	if (sec_reboot_on_panic) {
+		cmd = "recovery";
+		regmap_write(pmureg, panic_inform, SEC_RESET_REASON_RECOVERY);
+	}
 
 	pr_emerg("%s (%d, %s)\n", __func__, reboot_mode, cmd ? cmd : "(null)");
 
